@@ -8,24 +8,23 @@ const POLL_INTERVAL = 60000; // 60 seconds
 // ─── Mock data for when API is unreachable (dev/demo mode) ───────────────────
 const MOCK_DATA = {
   last_updated: new Date().toISOString(),
-  overall_status: 'YELLOW',
+  overall_status: 'GREEN',
   checks: {
-    vps_cpu:          { status: 'GREEN',  value: '34%',      message: 'Normal' },
-    vps_ram:          { status: 'GREEN',  value: '61%',      message: 'Normal' },
-    vps_disk:         { status: 'YELLOW', value: '78%',      message: 'Above 75% warning threshold' },
-    openclaw_gateway: { status: 'GREEN',  value: '200',      message: 'Responding normally' },
+    vps_cpu:          { status: 'GREEN',  value: '24%',      message: 'Normal' },
+    vps_ram:          { status: 'GREEN',  value: '52%',      message: 'Normal' },
+    vps_disk:         { status: 'GREEN',  value: '68%',      message: 'Within normal range' },
     mission_control:  { status: 'GREEN',  value: '200',      message: 'Responding normally' },
-    cbs_landing_page: { status: 'GREEN',  value: '200',      message: 'Response time: 412ms' },
+    cbs_landing_page: { status: 'GREEN',  value: '200',      message: 'Response time: 287ms' },
     ghl_webhook:      { status: 'GREEN',  value: '200',      message: 'GHL API reachable' },
-    ssl_certificate:  { status: 'GREEN',  value: '47 days',  message: 'Certificate healthy' },
-    cron_jobs:        { status: 'GREEN',  value: '4/4',      message: 'All cron jobs ran on schedule' },
-    agent_processes:  { status: 'GREEN',  value: '3/3',      message: 'benson, jeffrey, flo all active' },
+    ssl_certificate:  { status: 'GREEN',  value: '42 days',  message: 'Certificate healthy' },
+    cron_jobs:        { status: 'GREEN',  value: '3/3',      message: 'All cron jobs ran on schedule' },
+    stack_guardian:   { status: 'GREEN',  value: '5055',     message: 'API online with persistent storage' },
   },
   incidents: [
-    { time: '2026-06-03T14:22:00Z', level: 'RED',    message: 'Gateway unresponsive — auto-restarted' },
-    { time: '2026-06-02T09:11:00Z', level: 'YELLOW', message: 'Disk hit 76% — monitor flagged' },
+    { time: '2026-06-12T03:54:00Z', level: 'YELLOW', message: 'Agents Benson, Jeffrey, Flo decommissioned' },
+    { time: '2026-06-10T14:22:00Z', level: 'YELLOW', message: 'Flo cron interrupted — SIGTERM handling improved' },
   ],
-  run_count_today: 18,
+  run_count_today: 12,
 };
 
 const MOCK_HISTORY = {
@@ -320,26 +319,33 @@ export default function App() {
           {/* Agent roster */}
           <section className="section agents-section">
             <div className="section-header">
-              <span className="section-title">AGENT ROSTER</span>
+              <span className="section-title">AGENT STATUS</span>
             </div>
             <div className="agents-list">
-              {[
-                { id: 'benson', name: 'Benson III', role: 'Ops / Dispatch',  model: 'DeepSeek R1' },
-                { id: 'jeffrey', name: 'Jeffrey',    role: 'Lead Gen',        model: 'DeepSeek R1' },
-                { id: 'flo',    name: 'Flo',         role: 'Content / Social', model: 'Gemini Flash' },
-              ].map(agent => {
-                const agentStatus = checks.agent_processes?.status || 'GREEN';
-                return (
-                  <div key={agent.id} className="agent-row">
-                    <span className="agent-dot" style={{ background: STATUS_COLOR[agentStatus], boxShadow: STATUS_GLOW[agentStatus] }} />
-                    <div className="agent-info">
-                      <span className="agent-name">{agent.name}</span>
-                      <span className="agent-role">{agent.role}</span>
-                    </div>
-                    <span className="agent-model">{agent.model}</span>
-                  </div>
-                );
-              })}
+              <div className="agent-row" style={{opacity: 0.6}}>
+                <span className="agent-dot" style={{ background: '#999', boxShadow: '0 0 6px #99999966' }} />
+                <div className="agent-info">
+                  <span className="agent-name">Benson III</span>
+                  <span className="agent-role">Decommissioned</span>
+                </div>
+                <span className="agent-model">OFFLINE</span>
+              </div>
+              <div className="agent-row" style={{opacity: 0.6}}>
+                <span className="agent-dot" style={{ background: '#999', boxShadow: '0 0 6px #99999966' }} />
+                <div className="agent-info">
+                  <span className="agent-name">Jeffrey</span>
+                  <span className="agent-role">Decommissioned</span>
+                </div>
+                <span className="agent-model">OFFLINE</span>
+              </div>
+              <div className="agent-row" style={{opacity: 0.6}}>
+                <span className="agent-dot" style={{ background: '#999', boxShadow: '0 0 6px #99999966' }} />
+                <div className="agent-info">
+                  <span className="agent-name">Flo</span>
+                  <span className="agent-role">Decommissioned</span>
+                </div>
+                <span className="agent-model">OFFLINE</span>
+              </div>
             </div>
           </section>
 
