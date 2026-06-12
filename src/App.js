@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
 // CONFIG — update this to your VPS Flask API URL
-const STATUS_API = process.env.REACT_APP_STATUS_API || 'https://web-production-0f1f3.up.railway.app';
+const STATUS_API = process.env.REACT_APP_STATUS_API || 'http://54.209.246.24:5055';
 const POLL_INTERVAL = 60000; // 60 seconds
 
 // ─── Mock data for when API is unreachable (dev/demo mode) ───────────────────
