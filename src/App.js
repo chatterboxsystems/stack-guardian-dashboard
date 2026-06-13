@@ -3,7 +3,8 @@ import './App.css';
 
 // CONFIG — update this to your VPS Flask API URL
 const STATUS_API = process.env.REACT_APP_STATUS_API || 'https://web-production-0f1f3.up.railway.app';
-const POLL_INTERVAL = 60000; // 60 seconds
+const POLL_INTERVAL = 60000; // 60 seconds for main status
+const AGENT_POLL_INTERVAL = 10000; // 10 seconds for agent activity (live updates)
 
 // ─── Mock data for when API is unreachable (dev/demo mode) ───────────────────
 const MOCK_DATA = {
@@ -78,31 +79,34 @@ const CHECK_ICONS = {
 // ─── Components ──────────────────────────────────────────────────────────────
 
 function PulsingDot({ status }) {
+  const safeStatus = (status || 'unknown').toLowerCase();
   return (
-    <span className={`pulse-dot pulse-${status.toLowerCase()}`} />
+    <span className={`pulse-dot pulse-${safeStatus}`} />
   );
 }
 
 function StatusBadge({ status }) {
+  const safeStatus = status || 'UNKNOWN';
   return (
-    <span className="status-badge" style={{ color: STATUS_COLOR[status], boxShadow: STATUS_GLOW[status], borderColor: STATUS_COLOR[status] }}>
-      {status === 'GREEN' ? '● NOMINAL' : status === 'YELLOW' ? '◐ WARNING' : '✕ CRITICAL'}
+    <span className="status-badge" style={{ color: STATUS_COLOR[safeStatus] || '#999', boxShadow: STATUS_GLOW[safeStatus] || 'none', borderColor: STATUS_COLOR[safeStatus] || '#999' }}>
+      {safeStatus === 'GREEN' ? '● NOMINAL' : safeStatus === 'YELLOW' ? '◐ WARNING' : safeStatus === 'RED' ? '✕ CRITICAL' : '? UNKNOWN'}
     </span>
   );
 }
 
 function CheckCard({ id, check }) {
-  const color = STATUS_COLOR[check.status];
-  const glow  = STATUS_GLOW[check.status];
+  const safeStatus = check?.status || 'UNKNOWN';
+  const color = STATUS_COLOR[safeStatus] || '#999';
+  const glow  = STATUS_GLOW[safeStatus] || 'none';
   return (
     <div className="check-card" style={{ '--accent': color, '--glow': glow }}>
       <div className="check-top">
-        <span className="check-icon">{CHECK_ICONS[id]}</span>
-        <span className="check-name">{CHECK_LABELS[id]}</span>
+        <span className="check-icon">{CHECK_ICONS[id] || '❓'}</span>
+        <span className="check-name">{CHECK_LABELS[id] || id}</span>
         <span className="check-status-dot" style={{ background: color, boxShadow: glow }} />
       </div>
-      <div className="check-value" style={{ color }}>{check.value}</div>
-      <div className="check-message">{check.message}</div>
+      <div className="check-value" style={{ color }}>{check?.value || 'N/A'}</div>
+      <div className="check-message">{check?.message || 'No data'}</div>
     </div>
   );
 }
@@ -110,37 +114,42 @@ function CheckCard({ id, check }) {
 function HistoryBar({ snapshots }) {
   return (
     <div className="history-bar">
-      {snapshots.map((s, i) => (
-        <div
-          key={i}
-          className="history-tick"
-          title={`${formatTime(s.timestamp)} — ${s.overall_status}`}
-          style={{ background: STATUS_COLOR[s.overall_status] || '#333' }}
-        />
-      ))}
+      {(snapshots || []).map((s, i) => {
+        const safeStatus = s?.overall_status || 'UNKNOWN';
+        return (
+          <div
+            key={i}
+            className="history-tick"
+            title={`${formatTime(s?.timestamp)} — ${safeStatus}`}
+            style={{ background: STATUS_COLOR[safeStatus] || '#333' }}
+          />
+        );
+      })}
     </div>
   );
 }
 
 function IncidentRow({ incident }) {
-  const color = STATUS_COLOR[incident.level];
+  const safeLevel = incident?.level || 'UNKNOWN';
+  const color = STATUS_COLOR[safeLevel] || '#999';
   return (
     <div className="incident-row">
       <span className="incident-dot" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-      <span className="incident-time">{timeAgo(incident.time)}</span>
-      <span className="incident-msg">{incident.message}</span>
-      <span className="incident-level" style={{ color }}>{incident.level}</span>
+      <span className="incident-time">{timeAgo(incident?.time)}</span>
+      <span className="incident-msg">{incident?.message || 'No message'}</span>
+      <span className="incident-level" style={{ color }}>{safeLevel}</span>
     </div>
   );
 }
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [status, setStatus]       = useState(null);
-  const [history, setHistory]     = useState(null);
-  const [lastFetch, setLastFetch] = useState(null);
-  const [apiMode, setApiMode]     = useState('connecting'); // connecting | live | demo
-  const [countdown, setCountdown] = useState(POLL_INTERVAL / 1000);
+  const [status, setStatus]         = useState(null);
+  const [history, setHistory]       = useState(null);
+  const [agentStatus, setAgentStatus] = useState(null);
+  const [lastFetch, setLastFetch]   = useState(null);
+  const [apiMode, setApiMode]       = useState('connecting'); // connecting | live | demo
+  const [countdown, setCountdown]   = useState(POLL_INTERVAL / 1000);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -168,11 +177,30 @@ export default function App() {
     }
   }, [status]);
 
+  // Fetch agent activity more frequently (every 10 seconds)
+  const fetchAgentStatus = useCallback(async () => {
+    try {
+      const healthRes = await fetch(`${STATUS_API}/health`, { signal: AbortSignal.timeout(5000) });
+      if (!healthRes.ok) throw new Error('Agent fetch error');
+      const healthData = await healthRes.json();
+      if (healthData.agent_status) {
+        setAgentStatus(healthData.agent_status);
+      }
+    } catch (e) {
+      // Silently fail for agent polling, don't affect main API status
+    }
+  }, []);
+
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [fetchStatus]);
+    fetchAgentStatus();
+    const mainInterval = setInterval(fetchStatus, POLL_INTERVAL);
+    const agentInterval = setInterval(fetchAgentStatus, AGENT_POLL_INTERVAL);
+    return () => {
+      clearInterval(mainInterval);
+      clearInterval(agentInterval);
+    };
+  }, [fetchStatus, fetchAgentStatus]);
 
   useEffect(() => {
     const tick = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
@@ -215,17 +243,17 @@ export default function App() {
         </div>
 
         <div className="header-center">
-          <StatusBadge status={status.overall_status} />
+          <StatusBadge status={status?.overall_status} />
         </div>
 
         <div className="header-right">
           <div className="header-meta">
             <span className="meta-label">LAST CHECK</span>
-            <span className="meta-value">{timeAgo(status.last_updated)}</span>
+            <span className="meta-value">{status?.last_updated ? timeAgo(status.last_updated) : 'N/A'}</span>
           </div>
           <div className="header-meta">
             <span className="meta-label">RUNS TODAY</span>
-            <span className="meta-value">{status.run_count_today}</span>
+            <span className="meta-value">{status?.run_count_today || 0}</span>
           </div>
           <div className="header-meta">
             <span className="meta-label">NEXT POLL</span>
@@ -273,7 +301,7 @@ export default function App() {
         <section className="section checks-section">
           <div className="section-header">
             <span className="section-title">SERVICE CHECKS</span>
-            <PulsingDot status={status.overall_status} />
+            <PulsingDot status={status?.overall_status} />
           </div>
           <div className="checks-grid">
             {Object.entries(checks).map(([id, check]) => (
@@ -322,30 +350,48 @@ export default function App() {
               <span className="section-title">AGENT STATUS</span>
             </div>
             <div className="agents-list">
-              <div className="agent-row" style={{opacity: 0.6}}>
-                <span className="agent-dot" style={{ background: '#999', boxShadow: '0 0 6px #99999966' }} />
+              {/* Infra Agent */}
+              <div className="agent-row" style={{opacity: agentStatus?.infra === 'ACTIVE' ? 1 : 0.5}}>
+                <span className="agent-dot" style={{ background: agentStatus?.infra === 'ACTIVE' ? '#00ff88' : '#999', boxShadow: agentStatus?.infra === 'ACTIVE' ? '0 0 8px #00ff88' : '0 0 6px #99999966' }} />
                 <div className="agent-info">
-                  <span className="agent-name">Benson III</span>
-                  <span className="agent-role">Decommissioned</span>
+                  <span className="agent-name">Infra (Claude Code)</span>
+                  <span className="agent-role">{agentStatus?.infra === 'ACTIVE' ? 'Running on VPS' : 'Offline'}</span>
                 </div>
-                <span className="agent-model">OFFLINE</span>
+                <span className="agent-model">{agentStatus?.infra === 'ACTIVE' ? 'ONLINE' : 'OFFLINE'}</span>
               </div>
-              <div className="agent-row" style={{opacity: 0.6}}>
-                <span className="agent-dot" style={{ background: '#999', boxShadow: '0 0 6px #99999966' }} />
-                <div className="agent-info">
-                  <span className="agent-name">Jeffrey</span>
-                  <span className="agent-role">Decommissioned</span>
+
+              {/* Current Running Agent */}
+              {agentStatus?.current_agent ? (
+                <div className="agent-row" style={{opacity: 1}}>
+                  <span className="agent-dot" style={{ background: '#00ccff', boxShadow: '0 0 8px #00ccff' }} />
+                  <div className="agent-info">
+                    <span className="agent-name">{agentStatus.current_agent?.agent_name || 'Unknown'}</span>
+                    <span className="agent-role">{agentStatus.current_agent?.command || 'No command'}</span>
+                  </div>
+                  <span className="agent-model">RUNNING</span>
                 </div>
-                <span className="agent-model">OFFLINE</span>
-              </div>
-              <div className="agent-row" style={{opacity: 0.6}}>
-                <span className="agent-dot" style={{ background: '#999', boxShadow: '0 0 6px #99999966' }} />
-                <div className="agent-info">
-                  <span className="agent-name">Flo</span>
-                  <span className="agent-role">Decommissioned</span>
+              ) : (
+                <div className="agent-row" style={{opacity: 0.5}}>
+                  <span className="agent-dot" style={{ background: '#666', boxShadow: '0 0 6px #66666666' }} />
+                  <div className="agent-info">
+                    <span className="agent-name">No agents running</span>
+                    <span className="agent-role">Awaiting commands...</span>
+                  </div>
+                  <span className="agent-model">IDLE</span>
                 </div>
-                <span className="agent-model">OFFLINE</span>
-              </div>
+              )}
+
+              {/* Last 3 Completed Agents */}
+              {agentStatus?.completed_agents && agentStatus.completed_agents.map((agent, idx) => (
+                <div key={idx} className="agent-row" style={{opacity: 0.7}}>
+                  <span className="agent-dot" style={{ background: '#99ff99', boxShadow: '0 0 6px #99ff9966' }} />
+                  <div className="agent-info">
+                    <span className="agent-name">{agent?.agent_name || 'Unknown'}</span>
+                    <span className="agent-role">{agent?.command || 'No command'}</span>
+                  </div>
+                  <span className="agent-model">{agent?.completed_at ? timeAgo(agent.completed_at) : 'Unknown'}</span>
+                </div>
+              ))}
             </div>
           </section>
 
